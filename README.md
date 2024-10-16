@@ -1,2 +1,0 @@
-# darknight
-hidden C2
