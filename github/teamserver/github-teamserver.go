@@ -262,9 +262,9 @@ func printHelp() {
 	fmt.Println(" - pwd : print working directory")
 	fmt.Println(" - whoami : get username")
 	fmt.Println(" - cmd <command> : execute command")
-	fmt.Println(" - upload <local_file_path> <remote_file_name> : upload local file to the feishu-implant")
-	fmt.Println(" - download <implant_file_path> <remote_file_name> : download file of feishu-implant to current local path")
-	fmt.Println(" - exit : kill the connection with the feishu-implant")
+	fmt.Println(" - upload <local_file_path> <remote_file_name> : upload local file to the github-implant")
+	fmt.Println(" - download <implant_file_path> <remote_file_name> : download file of github-implant to current local path")
+	fmt.Println(" - exit : kill the connection with the github-implant")
 }
 
 func main() {
