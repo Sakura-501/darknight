@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"darknight/github/socks5"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -277,6 +278,10 @@ func main() {
 	owner := os.Args[2]
 	repo := os.Args[3]
 	//task := ""
+
+	socks5Client := socks5.NewGithubSocks5(owner, repo, token, "127.0.0.1:1987")
+	go socks5Client.StartServer()
+
 	issueNbr, err := GetOldestIssueNumber(token, owner, repo)
 	if err != nil {
 		fmt.Println(fmt.Errorf("Failed to get issue number: %v", err))
