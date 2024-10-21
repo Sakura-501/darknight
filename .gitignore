@@ -1,4 +1,7 @@
 .idea/**
 test/**
-github/implant/github-implant
-github/teamserver/github-teamserver
+github/implant/implant
+github/teamserver/teamserver
+feishu/implant/implant
+wechat/implant/implant
+dingding/implant/implant
