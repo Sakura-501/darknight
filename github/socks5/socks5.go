@@ -220,13 +220,20 @@ func (g *GithubSocks5) socks5Auth(conn net.Conn) error {
 func (g *GithubSocks5) githubConnect(target string) (*GithubReaderWriter, error) {
 	newConnTag := uuid.New().String()
 	fileName := fmt.Sprintf("%s_%s", connectTag, newConnTag)
-	// Create a new file in the repository
-	_, _, err := g.client.Repositories.CreateFile(context.Background(), g.user, g.repo, "implant/"+fileName, &github.RepositoryContentFileOptions{
-		Message: github.String(connectTag),
-		Content: []byte(target),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create file: %w", err)
+	for {
+		// Create a new file in the repository
+		_, _, err := g.client.Repositories.CreateFile(context.Background(), g.user, g.repo, "implant/"+fileName, &github.RepositoryContentFileOptions{
+			Message: github.String(connectTag),
+			Content: []byte(target),
+		})
+		if err != nil {
+			if strings.Contains(err.Error(), "409 is at") {
+				time.Sleep(400 * time.Millisecond)
+				continue
+			}
+			return nil, fmt.Errorf("failed to create file: %w", err)
+		}
+		break
 	}
 	// Wait the file to be deleted
 	for {
@@ -324,13 +331,23 @@ func (grw *GithubReaderWriter) Read(p []byte) (n int, err error) {
 			return 0, fmt.Errorf("failed to get content: %w", err)
 		}
 		copy(p, data)
+		fmt.Printf("Read %s\n", p)
 		// Delete the file
-		_, _, err = grw.client.Repositories.DeleteFile(context.Background(), grw.user, grw.repo, "implant/"+fileName, &github.RepositoryContentFileOptions{
-			Message: github.String("Delete file"),
-			SHA:     github.String(content.GetSHA()),
-		})
-		if err != nil {
-			return 0, fmt.Errorf("failed to delete file: %w", err)
+		for {
+			_, _, err = grw.client.Repositories.DeleteFile(context.Background(), grw.user, grw.repo, "implant/"+fileName, &github.RepositoryContentFileOptions{
+				Message: github.String("Delete file"),
+				SHA:     github.String(content.GetSHA()),
+			})
+			if err != nil {
+				if strings.Contains(err.Error(), "409 is at") {
+					time.Sleep(400 * time.Millisecond)
+					continue
+				}
+				if strings.Contains(err.Error(), "404 Not Found") {
+					break
+				}
+				return 0, fmt.Errorf("failed to delete file: %w", err)
+			}
 		}
 		return len(data), nil
 	}
@@ -339,19 +356,31 @@ func (grw *GithubReaderWriter) Read(p []byte) (n int, err error) {
 func (grw *GithubReaderWriter) Write(p []byte) (n int, err error) {
 	fileName := fmt.Sprintf("%s_%s", grw.writeTag, grw.uuid)
 	fmt.Printf("Writing file %s\n", fileName)
-	_, _, err = grw.client.Repositories.CreateFile(context.Background(), grw.user, grw.repo, "implant/"+fileName, &github.RepositoryContentFileOptions{
-		Message: github.String(grw.writeTag),
-		Content: p,
-	})
-	fmt.Printf("Write %s\n", p)
-	if err != nil {
-		return 0, fmt.Errorf("failed to create file: %w", err)
+	for {
+
+		_, _, err = grw.client.Repositories.CreateFile(context.Background(), grw.user, grw.repo, "implant/"+fileName, &github.RepositoryContentFileOptions{
+			Message: github.String(grw.writeTag),
+			Content: p,
+		})
+
+		if err != nil {
+			if strings.Contains(err.Error(), "409 is at") {
+				time.Sleep(400 * time.Millisecond)
+				continue
+			}
+			return 0, fmt.Errorf("failed to create file: %w", err)
+		}
+		break
 	}
+	fmt.Printf("Write %s\n", p)
+
 	// Wait the file to be deleted
 	for {
 		_, _, _, err := grw.client.Repositories.GetContents(context.Background(), grw.user, grw.repo, "implant/"+fileName, nil)
 		if err != nil {
-			break
+			if strings.Contains(err.Error(), "404 Not Found") {
+				break
+			}
 		}
 		time.Sleep(1 * time.Second)
 	}
