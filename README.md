@@ -1,9 +1,130 @@
 # darknight
 **A C2 communication tool hidden in the darknight**
 
-# 简略架构图
+# 整体架构图
 
-<img src="https://aliyunoss.sakura501.top/img/2024/10/17/20241017111505.png" alt="image-20241017111505799" style="zoom:50%;" />
+<img src="https://aliyunoss.sakura501.top/img/2024/10/23/20241023030236.png" alt="image-20241023030236645" style="zoom:25%;" />
+
+# 逻辑流程图
+
+## github
+
+### 基本功能流程
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/23/20241023030332.png" alt="image-20241023030332142" style="zoom:25%;" />
+
+### socks5流程
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/23/20241023030355.png" alt="image-20241023030355562" style="zoom:25%;" />
+
+## 飞书
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/23/20241023030416.png" alt="image-20241023030416902" style="zoom:25%;" />
+
+## 钉钉
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/23/20241023030426.png" alt="image-20241023030426815" style="zoom:25%;" />
+
+# 构建
+
+```bash
+# 下载依赖
+go mod download
+# 构建本地环境架构的二进制文件
+go build
+# 构建不同架构平台的二进制文件
+GOOS=windows GOARCH=amd64 go build -o darknight_windows_amd64.exe
+GOOS=linux GOARCH=amd64 go build -o darknight_linux_amd64
+GOOS=darwin GOARCH=arm64 go build -o darknight_macos_arm64
+```
+
+# 钉钉
+
+## bot 配置
+
+启动 implant 注入端我们需要四个参数值：`implant <client_id> <client_secret> <robot_code> <user_id>`
+
+打开开发者后台：https://open-dev.dingtalk.com/fe/app
+
+选择钉钉应用，创建企业内部应用：
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/22/20241022010342.png" alt="image-20241022010342300" style="zoom:25%;" />
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/22/20241022010404.png" alt="image-20241022010404238" style="zoom:25%;" />
+
+创建完成已进入应用，就可以看到我们需要的两个参数值**<client_id>和<client_secret>**：
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/22/20241022011102.png" alt="image-20241022011102696" style="zoom:25%;" />
+
+添加应用能力添加机器人，然后配置成 stream 模式即可，同时，这里有我们需要的**<robot_code>**：
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/22/20241022010808.png" alt="image-20241022010808210" style="zoom:25%;" />
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/22/20241022010925.png" alt="image-20241022010925651" style="zoom:25%;" />
+
+来到权限管理页面，开启以下权限：
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/22/20241022013344.png" alt="image-20241022013344313" style="zoom:25%;" />
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/22/20241022013400.png" alt="image-20241022013400293" style="zoom:25%;" />
+
+然后需要发布版本才能进行使用：
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/22/20241022013451.png" alt="image-20241022013451054" style="zoom:25%;" />
+
+最后我们打开钉钉客户端，有两种方式使用该C2进行通信，一种是直接与bot私聊，另一种是在群组添加该bot，然后直接@bot名字即可使用；
+
+下面是将bot加入企业默认群组的流程：
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/22/20241022013832.png" alt="image-20241022013832736" style="zoom:25%;" />
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/22/20241022013901.png" alt="image-20241022013901381" style="zoom:25%;" />
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/22/20241022013940.png" alt="image-20241022013940429" style="zoom:25%;" />
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/22/20241022013955.png" alt="image-20241022013955818" style="zoom:25%;" />
+
+## 命令大全
+
+> - help : show this help menu
+> - pwd : print working directory
+> - whoami : get username
+> - cmd <command> : execute command
+> - <upload(No Command)> : send the file directly to the bot, and the file will be downloaded to the current working directory
+> - download <remote_file_name> : download remote_file of dingding-implant to the folder of dingding knowledge base
+> - exit : kill the connection with the dingding-implant
+
+## 使用示例
+
+直接 go build 就能食用 implant 注入端；
+
+启动需要四个参数：`implant <client_id> <client_secret> <robot_code> <user_id>`
+
+四个参数如何配置请参考前面的配置教程；
+
+implant 端启动后，选择有 bot 的群组@bot，或者与 bot 私聊都能触发c2通信；（其中，除了上传文件只能私聊 bot触发，其他均可以通过群组@bot 或者私聊进行触发）
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/22/20241022000004.png" alt="image-20241022000004100" style="zoom:25%;" />
+
+cmd执行命令：
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/22/20241022000148.png" alt="image-20241022000148630" style="zoom:25%;" />
+
+上传文件（只能私聊 bot上传）：
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/22/20241022000316.png" alt="image-20241022000316359" style="zoom:25%;" />
+
+download下载文件到钉钉知识库（需要提前创建一个c2 文件夹，绝对路径和相对路径都可以），例如下载刚才上传的 agent：
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/22/20241022000654.png" alt="image-20241022000654712" style="zoom:25%;" />
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/22/20241022000439.png" alt="image-20241022000438926" style="zoom:25%;" />
+
+exit退出：
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/22/20241022000741.png" alt="image-20241022000741879" style="zoom:25%;" />
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/22/20241022000821.png" alt="image-20241022000821898" style="zoom:25%;" />
 
 # 构建
 

