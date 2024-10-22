@@ -27,8 +27,8 @@ func help() string {
 		" - pwd : print working directory\n" +
 		" - whoami : get username\n" +
 		" - cmd <command> : execute command\n" +
-		" - upload <remote_file_name> : upload local file to the feishu-implant if your previous message is file\n" +
-		" - download <remote_file_name> : download remote_file of feishu-implant to current local feishu\n" +
+		" - <upload(No Command)> : Send the file directly to the bot, and the file will be downloaded to the current working directory\n" +
+		" - download <remote_file_name> : download remote_file of dingding-implant to the folder of dingding knowledge base\n" +
 		" - exit : kill the connection with the dingding-implant")
 }
 

