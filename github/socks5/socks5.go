@@ -19,6 +19,8 @@ const (
 	outTag = "OUT"
 	// target -> implant -> server
 	inTag = "IN"
+	// Wait time in milliseconds
+	waitTime = 100
 )
 
 type GithubSocks5 struct {
@@ -72,12 +74,14 @@ func (g *GithubSocks5) handleConn(conn net.Conn) {
 	}
 	fmt.Println("Connected to target using uuid:", githubRW.uuid)
 	go func() {
-		_, err := io.Copy(githubRW, conn)
+		buf := make([]byte, 256*1024)
+		_, err := io.CopyBuffer(githubRW, conn, buf)
 		if err != nil {
 			fmt.Println("Failed to copy from implant to target:", err)
 		}
 	}()
-	_, err = io.Copy(conn, githubRW)
+	buf := make([]byte, 256*1024)
+	_, err = io.CopyBuffer(conn, githubRW, buf)
 	if err != nil {
 		fmt.Println("Failed to copy from target to implant:", err)
 	}
@@ -102,12 +106,14 @@ func (g *GithubSocks5) handleAcceptedConn(target string, githubRW *GithubReaderW
 	}
 	fmt.Println("Connected to target:", target)
 	go func() {
-		_, err := io.Copy(githubRW, conn)
+		buf := make([]byte, 256*1024)
+		_, err := io.CopyBuffer(githubRW, conn, buf)
 		if err != nil {
 			fmt.Println("Failed to copy from target to implant:", err)
 		}
 	}()
-	_, err = io.Copy(conn, githubRW)
+	buf := make([]byte, 256*1024)
+	_, err = io.CopyBuffer(conn, githubRW, buf)
 	if err != nil {
 		fmt.Println("Failed to copy from implant to target:", err)
 	}
@@ -228,7 +234,7 @@ func (g *GithubSocks5) githubConnect(target string) (*GithubReaderWriter, error)
 		})
 		if err != nil {
 			if strings.Contains(err.Error(), "409 is at") {
-				time.Sleep(400 * time.Millisecond)
+				time.Sleep(waitTime * time.Millisecond)
 				continue
 			}
 			return nil, fmt.Errorf("failed to create file: %w", err)
@@ -241,7 +247,7 @@ func (g *GithubSocks5) githubConnect(target string) (*GithubReaderWriter, error)
 		if err != nil {
 			break
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(waitTime * time.Millisecond)
 	}
 	return &GithubReaderWriter{
 		client:   g.client,
@@ -261,7 +267,7 @@ func (g *GithubSocks5) githubAccept() (string, *GithubReaderWriter, error) {
 		if err != nil {
 			if strings.Contains(err.Error(), "404 Not Found") {
 				// The directory does not exist yet
-				time.Sleep(1 * time.Second)
+				time.Sleep(waitTime * time.Millisecond)
 				continue
 			}
 			return "", nil, fmt.Errorf("failed to list files: %w", err)
@@ -299,7 +305,7 @@ func (g *GithubSocks5) githubAccept() (string, *GithubReaderWriter, error) {
 			}
 		}
 		// Sleep for a while before checking again
-		time.Sleep(1 * time.Second)
+		time.Sleep(waitTime * time.Millisecond)
 	}
 }
 
@@ -321,7 +327,7 @@ func (grw *GithubReaderWriter) Read(p []byte) (n int, err error) {
 		if err != nil {
 			if strings.Contains(err.Error(), "404 Not Found") {
 				// The file does not exist yet
-				time.Sleep(1 * time.Second)
+				time.Sleep(waitTime * time.Millisecond)
 				continue
 			}
 			return 0, fmt.Errorf("failed to read file: %w", err)
@@ -340,7 +346,7 @@ func (grw *GithubReaderWriter) Read(p []byte) (n int, err error) {
 			})
 			if err != nil {
 				if strings.Contains(err.Error(), "409 is at") {
-					time.Sleep(400 * time.Millisecond)
+					time.Sleep(waitTime * time.Millisecond)
 					continue
 				}
 				if strings.Contains(err.Error(), "404 Not Found") {
@@ -365,7 +371,7 @@ func (grw *GithubReaderWriter) Write(p []byte) (n int, err error) {
 
 		if err != nil {
 			if strings.Contains(err.Error(), "409 is at") {
-				time.Sleep(400 * time.Millisecond)
+				time.Sleep(waitTime * time.Millisecond)
 				continue
 			}
 			return 0, fmt.Errorf("failed to create file: %w", err)
@@ -382,7 +388,7 @@ func (grw *GithubReaderWriter) Write(p []byte) (n int, err error) {
 				break
 			}
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(waitTime * time.Millisecond)
 	}
 	return len(p), nil
 }
