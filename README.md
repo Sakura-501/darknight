@@ -1,9 +1,29 @@
 # darknight
 **A C2 communication tool hidden in the darknight**
 
-# 简略架构图
+# 整体架构图
 
-<img src="https://aliyunoss.sakura501.top/img/2024/10/17/20241017111505.png" alt="image-20241017111505799" style="zoom:50%;" />
+<img src="https://aliyunoss.sakura501.top/img/2024/10/23/20241023030236.png" alt="image-20241023030236645" style="zoom:25%;" />
+
+# 逻辑流程图
+
+## github
+
+### 基本功能流程
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/23/20241023030332.png" alt="image-20241023030332142" style="zoom:25%;" />
+
+### socks5流程
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/23/20241023030355.png" alt="image-20241023030355562" style="zoom:25%;" />
+
+## 飞书
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/23/20241023030416.png" alt="image-20241023030416902" style="zoom:25%;" />
+
+## 钉钉
+
+<img src="https://aliyunoss.sakura501.top/img/2024/10/23/20241023030426.png" alt="image-20241023030426815" style="zoom:25%;" />
 
 # 构建
 
